@@ -4483,7 +4483,11 @@ namespace TQVaultData
 			record = Database.DB.GetRecordFromFile(itemCostID);
 			if (record == null)
 			{
-				return;
+				record = Database.DB.GetRecordFromFile("records/game/itemcost.dbr");
+				if (record == null)
+				{
+					return;
+				}
 			}
 
 			if (TQDebug.ItemDebugLevel > 1)
@@ -6063,6 +6067,11 @@ namespace TQVaultData
 
 				for (int i = 0; i < numSkills; i++)
 				{
+					if (skills[i] != null && !skills[i].ToLower().StartsWith("records"))
+					{
+						continue;
+					}
+
 					DBRecordCollection skillRecord1 = Database.DB.GetRecordFromFile(skills[i]);
 					DBRecordCollection record = null;
 					string skillClass = skillRecord1.GetString("Class", 0);
