@@ -4685,11 +4685,11 @@ namespace TQVaultData
 
 				// Find or create the attrList for this effect
 				List<Variable> attrList;
-				try
+				if (attrByEffect.ContainsKey(effectGroup))
 				{
 					attrList = attrByEffect[effectGroup];
 				}
-				catch (KeyNotFoundException)
+				else
 				{
 					attrList = new List<Variable>();
 					attrByEffect[effectGroup] = attrList;

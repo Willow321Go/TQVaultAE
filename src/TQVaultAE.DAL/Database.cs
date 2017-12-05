@@ -520,11 +520,14 @@ namespace TQVaultData
 		{
 			try
 			{
-				return this.textDB[tagId.ToUpperInvariant()];
-			}
-			catch (KeyNotFoundException)
-			{
-				return tagId;
+				if (this.textDB.ContainsKey(tagId.ToUpperInvariant()))
+				{
+					return this.textDB[tagId.ToUpperInvariant()];
+				}
+				else
+				{
+					return tagId;
+				}
 			}
 			catch (Exception)
 			{

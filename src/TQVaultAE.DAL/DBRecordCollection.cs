@@ -62,14 +62,7 @@ namespace TQVaultData
 		{
 			get
 			{
-				try
-				{
-					return this.variables[variableName.ToUpperInvariant()];
-				}
-				catch (KeyNotFoundException)
-				{
-					return null;
-				}
+				return this.variables.ContainsKey(variableName.ToUpperInvariant()) ? this.variables[variableName.ToUpperInvariant()] : null;
 			}
 		}
 

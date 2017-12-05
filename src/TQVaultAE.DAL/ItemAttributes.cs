@@ -624,11 +624,11 @@ namespace TQVaultData
 				return result;
 			}
 
-			try
+			if (attributeDictionary.ContainsKey(attribute.ToUpperInvariant()))
 			{
 				return attributeDictionary[attribute.ToUpperInvariant()];
 			}
-			catch (KeyNotFoundException)
+			else
 			{
 				return result;
 			}
