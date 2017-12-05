@@ -159,15 +159,11 @@ namespace TQVaultData
 		/// <returns>Returns the string value for the variable, or empty string if the variable does not exist.</returns>
 		public string GetString(string variableName, int index)
 		{
-			Variable variable;
-			try
-			{
-				variable = this.variables[variableName.ToUpperInvariant()];
-			}
-			catch (KeyNotFoundException)
+			if (!variables.ContainsKey(variableName.ToUpperInvariant()))
 			{
 				return string.Empty;
 			}
+			Variable variable = this.variables[variableName.ToUpperInvariant()];
 
 			string answer = variable.GetString(index);
 			if (answer == null)

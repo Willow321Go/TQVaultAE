@@ -1310,40 +1310,7 @@ namespace TQVaultAE.GUI
 			// Get the transfer stash
 			try
 			{
-				Stash stash;
-				try
-				{
-					stash = this.stashes[transferStashFile];
-				}
-				catch (KeyNotFoundException)
-				{
-					bool stashLoaded = false;
-					stash = new Stash(Resources.GlobalTransferStash, transferStashFile);
-					stash.IsImmortalThrone = true;
-
-					try
-					{
-						// Throw a message if the stash does not exist.
-						bool stashPresent = stash.LoadFile();
-						if (!stashPresent)
-						{
-							MessageBox.Show(Resources.StashNotFoundMsg, Resources.StashNotFound, MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1, RightToLeftOptions);
-						}
-
-						stashLoaded = stashPresent;
-					}
-					catch (ArgumentException argumentException)
-					{
-						string msg = string.Format(CultureInfo.CurrentUICulture, "{0}\n{1}\n{2}", Resources.MainFormPlayerReadError, transferStashFile, argumentException.Message);
-						MessageBox.Show(msg, Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1, RightToLeftOptions);
-						stashLoaded = false;
-					}
-
-					if (stashLoaded)
-					{
-						this.stashes.Add(transferStashFile, stash);
-					}
-				}
+				Stash stash = this.stashes.ContainsKey(transferStashFile) ? this.stashes[transferStashFile] : OnStashNotFound(transferStashFile);
 
 				this.stashPanel.TransferStash = stash;
 			}
@@ -1356,10 +1323,43 @@ namespace TQVaultAE.GUI
 			}
 		}
 
-		/// <summary>
-		/// Gets a list of available player files and populates the drop down list.
-		/// </summary>
-		private void GetPlayerList()
+        private Stash OnStashNotFound(string transferStashFile)
+        {
+            Stash stash;
+            bool stashLoaded = false;
+            stash = new Stash(Resources.GlobalTransferStash, transferStashFile);
+            stash.IsImmortalThrone = true;
+
+            try
+            {
+                // Throw a message if the stash does not exist.
+                bool stashPresent = stash.LoadFile();
+                if (!stashPresent)
+                {
+                    MessageBox.Show(Resources.StashNotFoundMsg, Resources.StashNotFound, MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1, RightToLeftOptions);
+                }
+
+                stashLoaded = stashPresent;
+            }
+            catch (ArgumentException argumentException)
+            {
+                string msg = string.Format(CultureInfo.CurrentUICulture, "{0}\n{1}\n{2}", Resources.MainFormPlayerReadError, transferStashFile, argumentException.Message);
+                MessageBox.Show(msg, Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1, RightToLeftOptions);
+                stashLoaded = false;
+            }
+
+            if (stashLoaded)
+            {
+                this.stashes.Add(transferStashFile, stash);
+            }
+
+            return stash;
+        }
+
+        /// <summary>
+        /// Gets a list of available player files and populates the drop down list.
+        /// </summary>
+        private void GetPlayerList()
 		{
 			// Initialize the character combo-box
 			this.characterComboBox.Items.Clear();
@@ -2059,34 +2059,8 @@ namespace TQVaultAE.GUI
 				// Get the player
 				try
 				{
-					PlayerCollection player;
-					try
-					{
-						player = this.players[playerFile];
-					}
-					catch (KeyNotFoundException)
-					{
-						bool playerLoaded = false;
-						player = new PlayerCollection(charactersIT[i], playerFile);
-						player.IsImmortalThrone = true;
-						try
-						{
-							player.LoadFile();
-							playerLoaded = true;
-						}
-						catch (ArgumentException argumentException)
-						{
-							string msg = string.Format(CultureInfo.CurrentUICulture, "{0}\n{1}\n{2}", Resources.MainFormPlayerReadError, playerFile, argumentException.Message);
-							MessageBox.Show(msg, Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1, RightToLeftOptions);
-							playerLoaded = false;
-						}
-
-						if (playerLoaded)
-						{
-							this.players.Add(playerFile, player);
-						}
-					}
-				}
+					PlayerCollection player = this.players.ContainsKey(playerFile) ? this.players[playerFile] : OnPlayerNotFound(charactersIT, i, playerFile);
+                }
 				catch (IOException exception)
 				{
 					MessageBox.Show(exception.ToString(), Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1, RightToLeftOptions);
@@ -2099,36 +2073,8 @@ namespace TQVaultAE.GUI
 				// Get the player's stash
 				try
 				{
-					Stash stash;
-					try
-					{
-						stash = this.stashes[stashFile];
-					}
-					catch (KeyNotFoundException)
-					{
-						bool stashLoaded = false;
-						stash = new Stash(charactersIT[i], stashFile);
-						stash.IsImmortalThrone = true;
-
-						try
-						{
-							// Eat any file not found messages for the stash.
-							stash.LoadFile();
-							stashLoaded = true;
-						}
-						catch (ArgumentException argumentException)
-						{
-							string msg = string.Format(CultureInfo.CurrentUICulture, "{0}\n{1}\n{2}", Resources.MainFormPlayerReadError, stashFile, argumentException.Message);
-							MessageBox.Show(msg, Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1, RightToLeftOptions);
-							stashLoaded = false;
-						}
-
-						if (stashLoaded)
-						{
-							this.stashes.Add(stashFile, stash);
-						}
-					}
-				}
+					Stash stash = this.stashes.ContainsKey(stashFile) ? this.stashes[stashFile] : OnStashNotFound(charactersIT, i, stashFile);
+                }
 				catch (IOException exception)
 				{
 					MessageBox.Show(exception.ToString(), Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.None, MessageBoxDefaultButton.Button1, RightToLeftOptions);
@@ -2188,38 +2134,8 @@ namespace TQVaultAE.GUI
 				string filename = TQData.GetVaultFile(vaults[i]);
 
 				// Check the cache
-				PlayerCollection vault;
-				try
-				{
-					vault = this.vaults[filename];
-				}
-				catch (KeyNotFoundException)
-				{
-					// We need to load the vault.
-					bool vaultLoaded = false;
-					vault = new PlayerCollection(vaults[i], filename);
-					vault.IsVault = true;
-					try
-					{
-						vault.LoadFile();
-						vaultLoaded = true;
-					}
-					catch (ArgumentException argumentException)
-					{
-						string msg = string.Format(CultureInfo.CurrentUICulture, "{0}\n{1}\n{2}", Resources.MainFormPlayerReadError, filename, argumentException.Message);
-						MessageBox.Show(msg, Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1, RightToLeftOptions);
-						vaultLoaded = false;
-					}
-
-					// Add the vault to the cache
-					// but only if we parse it successfully.
-					if (vaultLoaded)
-					{
-						this.vaults.Add(filename, vault);
-					}
-				}
-
-				this.backgroundWorker1.ReportProgress(1);
+				PlayerCollection vault = this.vaults.ContainsKey(filename) ? this.vaults[filename] : OnVaultNotFound(vaults, i, filename);
+                this.backgroundWorker1.ReportProgress(1);
 			}
 
 			// We made it so set the flag to indicate we were successful.
@@ -2227,13 +2143,96 @@ namespace TQVaultAE.GUI
 			Settings.Default.Save();
 		}
 
-		/// <summary>
-		/// Callback for highlighting a new item.
-		/// Updates the text box on the main form.
-		/// </summary>
-		/// <param name="sender">sender object</param>
-		/// <param name="e">SackPanelEventArgs data</param>
-		private void NewItemHighlightedCallback(object sender, SackPanelEventArgs e)
+        private PlayerCollection OnVaultNotFound(string[] vaults, int i, string filename)
+        {
+            PlayerCollection vault;
+            // We need to load the vault.
+            bool vaultLoaded = false;
+            vault = new PlayerCollection(vaults[i], filename);
+            vault.IsVault = true;
+            try
+            {
+                vault.LoadFile();
+                vaultLoaded = true;
+            }
+            catch (ArgumentException argumentException)
+            {
+                string msg = string.Format(CultureInfo.CurrentUICulture, "{0}\n{1}\n{2}", Resources.MainFormPlayerReadError, filename, argumentException.Message);
+                MessageBox.Show(msg, Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1, RightToLeftOptions);
+                vaultLoaded = false;
+            }
+
+            // Add the vault to the cache
+            // but only if we parse it successfully.
+            if (vaultLoaded)
+            {
+                this.vaults.Add(filename, vault);
+            }
+
+            return vault;
+        }
+
+        private Stash OnStashNotFound(string[] charactersIT, int i, string stashFile)
+        {
+            Stash stash;
+            bool stashLoaded = false;
+            stash = new Stash(charactersIT[i], stashFile);
+            stash.IsImmortalThrone = true;
+
+            try
+            {
+                // Eat any file not found messages for the stash.
+                stash.LoadFile();
+                stashLoaded = true;
+            }
+            catch (ArgumentException argumentException)
+            {
+                string msg = string.Format(CultureInfo.CurrentUICulture, "{0}\n{1}\n{2}", Resources.MainFormPlayerReadError, stashFile, argumentException.Message);
+                MessageBox.Show(msg, Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1, RightToLeftOptions);
+                stashLoaded = false;
+            }
+
+            if (stashLoaded)
+            {
+                this.stashes.Add(stashFile, stash);
+            }
+
+            return stash;
+        }
+
+        private PlayerCollection OnPlayerNotFound(string[] charactersIT, int i, string playerFile)
+        {
+            PlayerCollection player;
+            bool playerLoaded = false;
+            player = new PlayerCollection(charactersIT[i], playerFile);
+            player.IsImmortalThrone = true;
+            try
+            {
+                player.LoadFile();
+                playerLoaded = true;
+            }
+            catch (ArgumentException argumentException)
+            {
+                string msg = string.Format(CultureInfo.CurrentUICulture, "{0}\n{1}\n{2}", Resources.MainFormPlayerReadError, playerFile, argumentException.Message);
+                MessageBox.Show(msg, Resources.GlobalError, MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1, RightToLeftOptions);
+                playerLoaded = false;
+            }
+
+            if (playerLoaded)
+            {
+                this.players.Add(playerFile, player);
+            }
+
+            return player;
+        }
+
+        /// <summary>
+        /// Callback for highlighting a new item.
+        /// Updates the text box on the main form.
+        /// </summary>
+        /// <param name="sender">sender object</param>
+        /// <param name="e">SackPanelEventArgs data</param>
+        private void NewItemHighlightedCallback(object sender, SackPanelEventArgs e)
 		{
 			Item item = e.Item;
 			SackCollection sack = e.Sack;

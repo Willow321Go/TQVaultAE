@@ -179,29 +179,26 @@ namespace TQVaultData
 			}
 
 			recordId = TQData.NormalizeRecordPath(recordId);
+
+			if (!cache.ContainsKey(recordId))
+			{
+				return OnCachedItemNotFound(recordId);
+			}
+			return this.cache[recordId];
+		}
+
+		private DBRecordCollection OnCachedItemNotFound(string recordId)
+		{
 			DBRecordCollection databaseRecord;
-
-			try
+			RecordInfo rawRecord;
+			if (!this.recordInfo.ContainsKey(recordId))
 			{
-				databaseRecord = this.cache[recordId];
+				return null;
 			}
-			catch (KeyNotFoundException)
-			{
-				RecordInfo rawRecord;
-				try
-				{
-					rawRecord = this.recordInfo[recordId];
-				}
-				catch (KeyNotFoundException)
-				{
-					// record not found
-					return null;
-				}
+			rawRecord = this.recordInfo[recordId];
 
-				databaseRecord = rawRecord.Decompress(this);
-				this.cache.Add(recordId, databaseRecord);
-			}
-
+			databaseRecord = rawRecord.Decompress(this);
+			this.cache.Add(recordId, databaseRecord);
 			return databaseRecord;
 		}
 

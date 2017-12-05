@@ -472,42 +472,41 @@ namespace TQVaultData
 			}
 
 			itemId = TQData.NormalizeRecordPath(itemId);
+			Info info = this.infoDB.ContainsKey(itemId) ? this.infoDB[itemId] : OnInfoNotFound(itemId);
+
+			return info;
+		}
+
+		private Info OnInfoNotFound(string itemId)
+		{
 			Info info;
-			try
+			DBRecordCollection record = null;
+
+			// Add support for searching a custom map database
+			if (this.ArzFileMod != null)
 			{
-				info = this.infoDB[itemId];
-			}
-			catch (KeyNotFoundException)
-			{
-				DBRecordCollection record = null;
-
-				// Add support for searching a custom map database
-				if (this.ArzFileMod != null)
-				{
-					record = this.ArzFileMod.GetItem(itemId);
-				}
-
-				// Try the expansion pack database first.
-				if (record == null && this.ArzFileIT != null)
-				{
-					record = this.ArzFileIT.GetItem(itemId);
-				}
-
-				if (record == null || this.ArzFileIT == null)
-				{
-					// Try looking in TQ database now
-					record = this.ArzFile.GetItem(itemId);
-				}
-
-				if (record == null)
-				{
-					return null;
-				}
-
-				info = new Info(record);
-				this.infoDB.Add(itemId, info);
+				record = this.ArzFileMod.GetItem(itemId);
 			}
 
+			// Try the expansion pack database first.
+			if (record == null && this.ArzFileIT != null)
+			{
+				record = this.ArzFileIT.GetItem(itemId);
+			}
+
+			if (record == null || this.ArzFileIT == null)
+			{
+				// Try looking in TQ database now
+				record = this.ArzFile.GetItem(itemId);
+			}
+
+			if (record == null)
+			{
+				return null;
+			}
+
+			info = new Info(record);
+			this.infoDB.Add(itemId, info);
 			return info;
 		}
 
@@ -810,62 +809,59 @@ namespace TQVaultData
 			}
 
 			resourceId = TQData.NormalizeRecordPath(resourceId);
-			Bitmap bitmap;
-
-			try
-			{
-				// see if we have this bitmap already
-				bitmap = this.bitmaps[resourceId];
-			}
-			catch (KeyNotFoundException)
-			{
-				// Load the resource
-				byte[] data = this.LoadResource(resourceId);
-
-				if (data == null)
-				{
-					if (TQDebug.DatabaseDebugLevel > 0)
-					{
-						TQDebug.DebugWriteLine("Failure loading resource.  Using default bitmap");
-					}
-
-					// could not load the data.  Use a default bitmap
-					bitmap = this.DefaultBitmap;
-				}
-				else
-				{
-					if (TQDebug.DatabaseDebugLevel > 1)
-					{
-						TQDebug.DebugWriteLine(string.Format(CultureInfo.InvariantCulture, "Loaded resource size={0}", data.Length));
-					}
-
-					// Create the bitmap
-					bitmap = BitmapCode.LoadFromTexMemory(data, 0, data.Length);
-					if (bitmap == null)
-					{
-						if (TQDebug.DatabaseDebugLevel > 0)
-						{
-							TQDebug.DebugWriteLine(string.Format(CultureInfo.InvariantCulture, "Failure creating bitmap from resource data len={0}", data.Length));
-						}
-
-						// could not create the bitmap
-						bitmap = this.DefaultBitmap;
-					}
-
-					if (TQDebug.DatabaseDebugLevel > 1)
-					{
-						TQDebug.DebugWriteLine(string.Format(CultureInfo.InvariantCulture, "Created Bitmap {0} x {1}", bitmap.Width, bitmap.Height));
-					}
-				}
-
-				this.bitmaps.Add(resourceId, bitmap);
-			}
+			Bitmap bitmap = bitmaps.ContainsKey(resourceId) ? this.bitmaps[resourceId] : OnBitmapNotFound(resourceId);
 
 			if (TQDebug.DatabaseDebugLevel > 0)
 			{
 				TQDebug.DebugWriteLine("Exiting Database.LoadBitmap()");
 			}
 
+			return bitmap;
+		}
+
+		private Bitmap OnBitmapNotFound(string resourceId)
+		{
+			Bitmap bitmap;
+			// Load the resource
+			byte[] data = this.LoadResource(resourceId);
+
+			if (data == null)
+			{
+				if (TQDebug.DatabaseDebugLevel > 0)
+				{
+					TQDebug.DebugWriteLine("Failure loading resource.  Using default bitmap");
+				}
+
+				// could not load the data.  Use a default bitmap
+				bitmap = this.DefaultBitmap;
+			}
+			else
+			{
+				if (TQDebug.DatabaseDebugLevel > 1)
+				{
+					TQDebug.DebugWriteLine(string.Format(CultureInfo.InvariantCulture, "Loaded resource size={0}", data.Length));
+				}
+
+				// Create the bitmap
+				bitmap = BitmapCode.LoadFromTexMemory(data, 0, data.Length);
+				if (bitmap == null)
+				{
+					if (TQDebug.DatabaseDebugLevel > 0)
+					{
+						TQDebug.DebugWriteLine(string.Format(CultureInfo.InvariantCulture, "Failure creating bitmap from resource data len={0}", data.Length));
+					}
+
+					// could not create the bitmap
+					bitmap = this.DefaultBitmap;
+				}
+
+				if (TQDebug.DatabaseDebugLevel > 1)
+				{
+					TQDebug.DebugWriteLine(string.Format(CultureInfo.InvariantCulture, "Created Bitmap {0} x {1}", bitmap.Width, bitmap.Height));
+				}
+			}
+
+			this.bitmaps.Add(resourceId, bitmap);
 			return bitmap;
 		}
 
@@ -951,11 +947,11 @@ namespace TQVaultData
 				}
 
 				ArcFile arcFile;
-				try
+				if (this.arcFiles.ContainsKey(arcFileName))
 				{
 					arcFile = this.arcFiles[arcFileName];
 				}
-				catch (KeyNotFoundException)
+				else
 				{
 					arcFile = new ArcFile(arcFileName);
 					this.arcFiles.Add(arcFileName, arcFile);
