@@ -73,6 +73,14 @@ namespace TQVaultData
 			}
 		}
 
+		public ICollection<Variable> Variables
+		{
+			get
+			{
+				return variables.Values;
+			}
+		}
+
 		/// <summary>
 		/// Enumerates all of the variables in this DBrecord
 		/// </summary>

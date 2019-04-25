@@ -9,8 +9,10 @@ namespace ArzExplorer
 	using System.Collections.Generic;
 	using System.Drawing;
 	using System.IO;
+	using System.Linq;
 	using System.Reflection;
 	using System.Text;
+	using System.Text.RegularExpressions;
 	using System.Windows.Forms;
 	using TQVaultData;
 
@@ -68,6 +70,10 @@ namespace ArzExplorer
 		/// Gutter size for sizing the form.
 		/// </summary>
 		private int gutter;
+
+		private List<string> recordHistory = new List<string>();
+		private int recordIndex = -1;
+		private Dictionary<string, string> textMap = new Dictionary<string, string>();
 
 		/// <summary>
 		/// Initializes a new instance of the Form1 class.
@@ -266,6 +272,7 @@ namespace ArzExplorer
 			if (fileType == CompressedFileType.ArzFile)
 			{
 				dataRecords = arzFile.GetKeyTable();
+				showStringTable();
 			}
 			else if (fileType == CompressedFileType.ArcFile)
 			{
@@ -353,6 +360,29 @@ namespace ArzExplorer
 			Cursor.Current = Cursors.Default;
 
 			this.treeView1.EndUpdate();
+		}
+
+		private void showStringTable()
+		{
+			Dictionary<int, string> stringTables = arzFile.StringTable;
+			List<KeyValuePair<int, string>> items = new List<KeyValuePair<int, string>>();
+			string searchText = textSearch.Text;
+			foreach (KeyValuePair<int, string> item in stringTables)
+			{
+				if (searchText.Length == 0 || item.Value.Contains(searchText))
+				{
+					items.Add(item);
+					if (items.Count >= 100)
+					{
+						break;
+					}
+				}
+			}
+			this.dataGridStrings.Rows.Clear();
+			foreach (KeyValuePair<int, string> item in items)
+			{
+				this.dataGridStrings.Rows.Add(item.Key, item.Value);
+			}
 		}
 
 		/// <summary>
@@ -504,6 +534,7 @@ namespace ArzExplorer
 					if (fileType == CompressedFileType.ArzFile)
 					{
 						this.record = arzFile.GetRecordNotCached(this.destFile);
+						showTable();
 						foreach (Variable variable in this.record)
 						{
 							recordText.Add(variable.ToString());
@@ -575,9 +606,9 @@ namespace ArzExplorer
 						this.textBox1.Lines = null;
 					}
 				}
-				catch (Exception)
+				catch (Exception ex)
 				{
-					// Eat the exception
+					MessageBox.Show(ex.Message);
 				}
 			}
 			else
@@ -585,6 +616,59 @@ namespace ArzExplorer
 				this.destFile = null;
 				this.textBox1.Lines = null;
 			}
+		}
+
+		private string GetRecordDescription(DBRecordCollection record)
+		{
+			string description = "";
+			string key = "";
+			List<string> descriptionNames = new List<string>();
+			descriptionNames.Add("description");
+			descriptionNames.Add("itemNameTag");
+			descriptionNames.Add("itemText");
+			foreach (Variable v in record)
+			{
+				key = v.Values.Split('|')[0];
+				if (descriptionNames.Contains(v.Name))
+				{
+					if (textMap.ContainsKey(key))
+					{
+						description = textMap[key];
+					}
+					else
+					{
+						description = key;
+					}
+					break;
+				}
+			}
+			return description;
+		}
+
+		private void showTable()
+		{
+			this.txtRecord.Text = this.record.Id;
+			if (this.recordHistory.Count == 0 
+				|| !recordHistory[recordIndex].Equals(record.Id))
+			{
+				recordHistory.Add(record.Id);
+				recordIndex = recordHistory.Count - 1;
+				if (recordIndex == -1)
+				{
+					recordIndex = 0;
+				}
+			}
+			btnBack.Enabled = recordIndex > 0;
+			btnForward.Enabled = recordHistory.Count > 0 && recordIndex < recordHistory.Count-1;
+			BindingSource source = new BindingSource();
+			string description = GetRecordDescription(this.record);
+			foreach (Variable v in this.record)
+			{
+				source.Add(v.clone());
+			}
+			this.dataGridView1.DataSource = source;
+			this.Text = string.Format("{0} - {1} - {2}", this.titleText, this.sourceFile, description);
+
 		}
 
 		/// <summary>
@@ -648,6 +732,264 @@ namespace ArzExplorer
 			{
 				e.Effect = DragDropEffects.None;
 			}
+		}
+
+		private void saveToolStripMenuItem_Click(object sender, EventArgs e)
+		{
+			string[] lines = this.textBox1.Lines;
+			DBRecordCollection record = new DBRecordCollection(this.record.Id, this.record.RecordType);
+			foreach(string line in lines)
+			{
+				record.Set(Variable.parse(line));
+			}
+			try
+			{
+				arzFile.Save(record);
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show(ex.Message);
+			}
+		}
+
+		private void dataGridView1_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+		{
+			if (this.record == null)
+			{
+				return;
+			}
+			List<string> recordText = new List<string>();
+			foreach (Variable variable in this.dataGridView1.DataSource as BindingSource)
+			{
+				recordText.Add(variable.ToString());
+			}
+			if (recordText.Count != 0)
+			{
+				string[] output = new string[recordText.Count];
+				recordText.CopyTo(output);
+				this.textBox1.Lines = output;
+			}
+		}
+
+		private void btnSearch_Click(object sender, EventArgs e)
+		{
+			showStringTable();
+		}
+
+		private void btnBack_Click(object sender, EventArgs e)
+		{
+			recordIndex--;
+			txtRecord.Text = recordHistory[recordIndex];
+			btnGo_Click(sender, e);
+		}
+
+		private void btnForward_Click(object sender, EventArgs e)
+		{
+			recordIndex++;
+			txtRecord.Text = recordHistory[recordIndex];
+			btnGo_Click(sender, e);
+		}
+
+		private void btnGo_Click(object sender, EventArgs e)
+		{
+			string recordId = TQData.NormalizeRecordPath(txtRecord.Text);
+			var result = treeView1.Nodes.Find(recordId, true).FirstOrDefault();
+			if (result != null)
+				treeView1.SelectedNode = result;
+		}
+
+		private void DataGridView1_RowPostPaint(object sender, DataGridViewRowPostPaintEventArgs e)
+		{
+			using (SolidBrush b = new SolidBrush(dataGridView1.RowHeadersDefaultCellStyle.ForeColor))
+			{
+				e.Graphics.DrawString((e.RowIndex).ToString(), e.InheritedRowStyle.Font, b, e.RowBounds.Location.X + 12, e.RowBounds.Location.Y + 4);
+			}
+		}
+
+		private void DataGridView1_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+		{
+			if (e.ColumnIndex == 1 && e.Value != null)
+			{
+				DataGridViewCell cell = this.dataGridView1.Rows[e.RowIndex].Cells[e.ColumnIndex];
+				string cellValue = e.Value as string;
+				if (cellValue.StartsWith("chanceToEquip"))
+				{
+					string name = cellValue.Replace("chanceToEquip", "");
+					foreach (Variable v in this.record)
+					{
+						if (v.Name.EndsWith(name) && v.Name.StartsWith("loot"))
+						{
+							cell.ToolTipText = v.Values;
+							break;
+						}
+					}
+				}
+				else if (cellValue.StartsWith("loot"))
+				{
+					string name = cellValue.Replace("loot", "");
+					foreach (Variable v in this.record)
+					{
+						if (v.Name.EndsWith(name) && v.Name.StartsWith("chanceToEquip"))
+						{
+							cell.ToolTipText = v.Values;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		private void OpenTextStripMenuItem_Click(object sender, EventArgs e)
+		{
+			OpenFileDialog openDialog = new OpenFileDialog();
+			openDialog.Filter = "Compressed TQ files (*.arc)|*.arc|All files (*.*)|*.*";
+			openDialog.FilterIndex = 1;
+			openDialog.RestoreDirectory = true;
+
+			DialogResult result = openDialog.ShowDialog();
+			if (result == DialogResult.OK)
+			{
+				this.LoadTextFile(openDialog.FileName);
+			}
+			else
+			{
+				return;
+			}
+		}
+
+		private void LoadTextFile(string filename)
+		{
+			if (string.IsNullOrEmpty(filename))
+			{
+				MessageBox.Show("You must enter a valid source file path.");
+				return;
+			}
+
+			if (!File.Exists(filename))
+			{
+				// they did not give us a file
+				MessageBox.Show("You must specify a file!");
+				return;
+			}
+
+			// Try to read it as an ARC file since those have a header.
+			ArcFile arcFile = new ArcFile(filename);
+			if (arcFile.Read())
+			{
+				string[] table = arcFile.GetKeyTable();
+				foreach (string item in table)
+				{
+					byte[] data = arcFile.GetData(item);
+					string text = Encoding.Unicode.GetString(data);
+					ReadText(text);
+				}
+			}
+			else
+			{
+				MessageBox.Show("File read failed!");
+			}
+		}
+
+		private void ReadText(string text)
+		{
+			string[] lines = text.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+			foreach (string line in lines)
+			{
+				if (string.IsNullOrWhiteSpace(line) || line.StartsWith("//"))
+				{
+					continue;
+				}
+				string[] l = line.Split('=');
+				if (l.Length == 2)
+				{
+					textMap[l[0]] = l[1].Replace(" ", "");
+				}
+			}
+		}
+
+		private void DataGridView1_CellToolTipTextNeeded(object sender, DataGridViewCellToolTipTextNeededEventArgs e)
+		{
+			DataGridView dataGridView = sender as DataGridView;
+			if (e.RowIndex >= 0 && e.ColumnIndex >= 0 && e.RowIndex < dataGridView.RowCount && e.ColumnIndex < dataGridView.ColumnCount)
+			{
+				DataGridViewCell cell = dataGridView.Rows[e.RowIndex].Cells[e.ColumnIndex];
+				string cellValue = TQData.NormalizeRecordPath(cell.Value as string);
+				MatchCollection matches = Regex.Matches(cellValue, @"records\\.*.dbr", RegexOptions.IgnoreCase);
+				if (matches.Count > 0)
+				{
+					StringBuilder builder = new StringBuilder();
+					foreach (Match item in matches)
+					{
+						if (builder.Length > 0)
+						{
+							builder.AppendLine();
+						}
+						DBRecordCollection record = arzFile.GetItem(item.Value);
+						if (record != null)
+						{
+							builder.Append(GetRecordDescription(record));
+						}
+					}
+					cell.ToolTipText = builder.ToString();
+				}
+			}
+		}
+
+		private void DataGridView1_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+		{
+			if (e.ColumnIndex == 1)
+			{
+				DataGridViewCell cell = this.dataGridView1.Rows[e.RowIndex].Cells[e.ColumnIndex];
+				string cellValue = cell.Value as string;
+				if (cellValue.StartsWith("chanceToEquip") || cellValue.StartsWith("loot"))
+				{
+					string name = cellValue.Replace("chanceToEquip", "").Replace("loot", "");
+					for (int i = 0; i < this.dataGridView1.RowCount; i++)
+					{
+						DataGridViewCell targetCell = this.dataGridView1.Rows[i].Cells[e.ColumnIndex];
+						string value = targetCell.Value as string;
+						if (!cellValue.Equals(value) && value.EndsWith(name) && (value.StartsWith("loot") || value.StartsWith("chanceToEquip")))
+						{
+							this.dataGridView1.CurrentCell = targetCell;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		private void DataGridView1_CellMouseClick(object sender, DataGridViewCellMouseEventArgs e)
+		{
+			if (e.Button == MouseButtons.Right)
+			{
+				DataGridViewCell cell = (sender as DataGridView).Rows[e.RowIndex].Cells[e.ColumnIndex];
+				string cellValue = TQData.NormalizeRecordPath(cell.Value as string);
+				MatchCollection matches = Regex.Matches(cellValue, @"records\\.*.dbr", RegexOptions.IgnoreCase);
+				if (matches.Count > 0)
+				{
+					txtRecord.Text = matches[0].Value;
+					btnGo_Click(null, null);
+				}
+			}
+		}
+
+		private void TxtRecord_KeyDown(object sender, KeyEventArgs e)
+		{
+			if (e.KeyCode == Keys.Enter)
+			{
+				btnGo_Click(null, null);
+			}
+		}
+
+		private void RestoreToolStripMenuItem_Click(object sender, EventArgs e)
+		{
+			arzFile.Restore(record);
+		}
+
+		private void FixToolStripMenuItem_Click(object sender, EventArgs e)
+		{
+			int count = arzFile.Fix();
+			MessageBox.Show("Fixed " + count + " items.");
 		}
 	}
 }

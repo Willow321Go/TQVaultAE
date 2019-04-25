@@ -4598,7 +4598,7 @@ namespace TQVaultData
 				Expression expression = ExpressionEvaluate.CreateExpression(value);
 
 				// Changed by Bman to fix random overflow crashes
-				Variable ans = new Variable(variableKey, VariableDataType.Integer, 1);
+				Variable ans = new Variable(0, variableKey, VariableDataType.Integer, 1);
 
 				// Changed by VillageIdiot to fix random overflow crashes.
 				double tempVal = Math.Ceiling(Convert.ToDouble(expression.Evaluate(), CultureInfo.InvariantCulture));

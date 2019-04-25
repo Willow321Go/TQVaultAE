@@ -5,11 +5,13 @@
 //-----------------------------------------------------------------------
 namespace TQVaultData
 {
+	using zlib;
 	using System;
 	using System.Collections.Generic;
 	using System.Globalization;
 	using System.IO;
 	using System.IO.Compression;
+	using System.Linq;
 
 	/// <summary>
 	/// Class for decoding Titan Quest ARZ files.
@@ -30,6 +32,8 @@ namespace TQVaultData
 		/// RecordInfo keyed by their ID
 		/// </summary>
 		private Dictionary<string, RecordInfo> recordInfo;
+
+		private List<RecordInfo> recordInfoList;
 
 		/// <summary>
 		/// DBRecords cached as they get requested
@@ -59,6 +63,19 @@ namespace TQVaultData
 			get
 			{
 				return this.recordInfo.Count;
+			}
+		}
+
+		public Dictionary<int, string> StringTable
+		{
+			get
+			{
+				Dictionary<int, string> map = new Dictionary<int, string>(this.strings.Length);
+				for(int i = 0; i < this.strings.Length; i++)
+				{
+					map[i] = this.strings[i];
+				}
+				return map;
 			}
 		}
 
@@ -239,6 +256,21 @@ namespace TQVaultData
 			}
 		}
 
+		public void Save(DBRecordCollection record)
+		{
+			string recordId = TQData.NormalizeRecordPath(record.Id);
+			this.recordInfo[recordId].Save(record, this);
+			//this.cache[recordId] = record;
+			this.cache.Remove(recordId);
+		}
+
+		public void Restore(DBRecordCollection record)
+		{
+			string recordId = TQData.NormalizeRecordPath(record.Id);
+			this.recordInfo[recordId].Restore(this);
+			this.cache.Remove(recordId);
+		}
+
 		/// <summary>
 		/// Builds a list of the keys for this file.  Used to help build the tree structure.
 		/// </summary>
@@ -268,6 +300,11 @@ namespace TQVaultData
 		private string Getstring(int index)
 		{
 			return this.strings[index];
+		}
+
+		private int Getstringindex(string text)
+		{
+			return Array.IndexOf(this.strings, text);
 		}
 
 		/// <summary>
@@ -315,6 +352,7 @@ namespace TQVaultData
 		private void ReadRecordTable(int pos, int numEntries, BinaryReader reader, StreamWriter outStream)
 		{
 			this.recordInfo = new Dictionary<string, RecordInfo>((int)Math.Round(numEntries * 1.2));
+			this.recordInfoList = new List<RecordInfo>((int)Math.Round(numEntries * 1.2));
 			reader.BaseStream.Seek(pos, SeekOrigin.Begin);
 
 			if (outStream != null)
@@ -328,6 +366,7 @@ namespace TQVaultData
 				recordInfo.Decode(reader, 24, this); // 24 is the offset of where all record data begins
 
 				this.recordInfo.Add(TQData.NormalizeRecordPath(recordInfo.ID), recordInfo);
+				this.recordInfoList.Add(recordInfo);
 
 				// output this record
 				if (outStream != null)
@@ -335,6 +374,7 @@ namespace TQVaultData
 					outStream.WriteLine("{0},{1},{2}", i, recordInfo.ID, recordInfo.RecordType);
 				}
 			}
+			this.recordInfoList.Sort((a, b) => a.offset.CompareTo(b.offset));
 		}
 
 		#region RecordInfo
@@ -348,12 +388,17 @@ namespace TQVaultData
 			/// <summary>
 			/// Offset in the file for this record.
 			/// </summary>
-			private int offset;
+			public int offset;
+
+			public int length;
+			protected long lengthPosition;
 
 			/// <summary>
 			/// String index of ID
 			/// </summary>
 			private int idStringIndex;
+			private int decompresslength;
+			private byte[] decompressData;
 
 			/// <summary>
 			/// Initializes a new instance of the RecordInfo class.
@@ -396,7 +441,8 @@ namespace TQVaultData
 
 				// Compressed size
 				// We throw it away and just advance the offset in the file.
-				inReader.ReadInt32();
+				this.lengthPosition = inReader.BaseStream.Position;
+				this.length = inReader.ReadInt32();
 
 				// Crap1 - timestamp?
 				// We throw it away and just advance the offset in the file.
@@ -427,6 +473,8 @@ namespace TQVaultData
 				// 0x04 int32 key string ID (the id into the string table for this variable name
 				// 0x08 data value
 				byte[] data = this.DecompressBytes(arzFile);
+				this.decompresslength = data.Length;
+				this.decompressData = data;
 
 				int numberOfDWords = data.Length / 4;
 
@@ -482,7 +530,7 @@ namespace TQVaultData
 							throw new ArgumentOutOfRangeException(string.Format(CultureInfo.InvariantCulture, "Error while parsing arz record {0}, variable {1}, bad dataType {2}", this.ID, variableName, dataType));
 						}
 
-						Variable v = new Variable(variableName, (VariableDataType)dataType, valCount);
+						Variable v = new Variable(variableID, variableName, (VariableDataType)dataType, valCount);
 
 						if (valCount < 1)
 						{
@@ -532,7 +580,7 @@ namespace TQVaultData
 											val = val.Trim();
 										}
 
-										v[j] = val;
+										v[j] = val + "|" + id;
 										break;
 									}
 
@@ -569,32 +617,195 @@ namespace TQVaultData
 				{
 					arzStream.Seek(this.offset, SeekOrigin.Begin);
 
-					// Ignore the zlib compression method.
-					arzStream.ReadByte();
+					byte[] compressedData = new byte[this.length];
+					arzStream.Read(compressedData, 0, compressedData.Length);
+					return DecompressData(compressedData);
+				}
+			}
 
-					// Ignore the zlib compression flags.
-					arzStream.ReadByte();
+			public static byte[] CompressData(byte[] inData, int level = 5)
+			{
+				using (MemoryStream outMemoryStream = new MemoryStream())
+				using (ZOutputStream outZStream = new ZOutputStream(outMemoryStream, level))
+				{
+					outZStream.Write(inData, 0, inData.Length);
+					outZStream.finish();
+					return outMemoryStream.ToArray();
+				}
+			}
 
-					// Create a deflate stream.
-					using (DeflateStream deflate = new DeflateStream(arzStream, CompressionMode.Decompress))
+			public static byte[] DecompressData(byte[] inData)
+			{
+				// Ignore the zlib compression method.
+				byte method = inData[0];
+				// Ignore the zlib compression flags.
+				byte flags = inData[1];
+				using (var stream = new MemoryStream(inData, 2, inData.Length - 2))
+				using (DeflateStream deflate = new DeflateStream(stream, CompressionMode.Decompress))
+				using (MemoryStream outStream = new MemoryStream())
+				{
+					deflate.CopyTo(outStream);
+					return outStream.ToArray();
+				}
+			}
+
+			public void Save(DBRecordCollection record, ArzFile arzFile)
+			{
+				arzFile.MakeBackup();
+				// Create a memory stream to read the binary data
+				using (MemoryStream memory = new MemoryStream())
+				{
+					using (BinaryWriter writer = new BinaryWriter(memory))
 					{
-						// Create a memorystream to hold the decompressed data
-						using (MemoryStream outStream = new MemoryStream())
+						foreach (Variable variable in record)
 						{
-							// Now decompress
-							byte[] buffer = new byte[1024];
-							int len;
-							while ((len = deflate.Read(buffer, 0, 1024)) > 0)
-							{
-								outStream.Write(buffer, 0, len);
-							}
+							writer.Write((short)variable.DataType);
+							writer.Write((short)variable.NumberOfValues);
+							writer.Write(variable.variableID);
 
-							// Return the decompressed data
-							return outStream.ToArray();
+							for (int j = 0; j < variable.NumberOfValues; ++j)
+							{
+								switch (variable.DataType)
+								{
+									case VariableDataType.Integer:
+									case VariableDataType.Boolean:
+										{
+											writer.Write((int)variable[j]);
+											break;
+										}
+
+									case VariableDataType.Float:
+										{
+											writer.Write((float)variable[j]);
+											break;
+										}
+
+									case VariableDataType.StringVar:
+										{
+											writer.Write(Int32.Parse(((string)variable[j]).Split('|')[1]));
+											break;
+										}
+
+									default:
+										{
+											writer.Write((int)variable[j]);
+											break;
+										}
+								}
+							}
 						}
+					}
+					byte[] data = memory.ToArray();
+					// Read in the compressed data and decompress it, storing the results in a memorystream
+					using (FileStream arzStream = new FileStream(arzFile.fileName, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
+					{
+						arzStream.Seek(this.offset, SeekOrigin.Begin);
+						byte[] compressedData = CompressData(data, 9);
+						if (compressedData.Length > this.length)
+						{
+							compressedData = CompressData(data, 5);
+						}
+						if (compressedData.Length > this.length)
+						{
+							throw new InvalidOperationException("Compressed data larger than original");
+						}
+						arzStream.Write(compressedData, 0, compressedData.Length);
 					}
 				}
 			}
+
+			public void Restore(ArzFile arzFile, bool restoreNext = true)
+			{
+				if (arzFile == null)
+				{
+					throw new ArgumentNullException("arzFile", "arzFile is null.");
+				}
+				string backupFolder = arzFile.fileName + "_backups";
+				var myFile = new DirectoryInfo(backupFolder).GetFiles()
+					.Where(f => f.Extension.Equals(".arz"))
+					.OrderByDescending(f => f.LastWriteTime)
+					.First();
+				if (myFile == null)
+				{
+					throw new InvalidOperationException("No backup.");
+				}
+
+				// Read in the compressed data and decompress it, storing the results in a memorystream
+				using(FileStream arzStream = new FileStream(arzFile.fileName, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
+				using(FileStream backupStream = new FileStream(myFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read))
+				{
+					backupStream.Seek(this.offset, SeekOrigin.Begin);
+					arzStream.Seek(this.offset, SeekOrigin.Begin);
+					byte[] buffer = new byte[this.length];
+					backupStream.Read(buffer, 0, this.length);
+					arzStream.Write(buffer, 0, this.length);
+				}
+				if (restoreNext)
+				{
+					int index = arzFile.recordInfoList.IndexOf(this);
+					if (index >= 0 && index < arzFile.recordInfoList.Count - 1)
+					{
+						RecordInfo next = arzFile.recordInfoList[index + 1];
+						next.Restore(arzFile, false);
+						arzFile.cache.Remove(TQData.NormalizeRecordPath(next.ID));
+					}
+				}
+			}
+		}
+
+		private void MakeBackup()
+		{
+			// make backup
+			string backupFolder = this.fileName + "_backups";
+			if (!Directory.Exists(backupFolder))
+			{
+				Directory.CreateDirectory(backupFolder);
+			}
+			//string backupFile = Path.Combine(backupFolder, DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".arz");
+			//File.Copy(this.fileName, backupFile, true);
+		}
+
+		public int Fix()
+		{
+			string backupFolder = this.fileName + "_backups";
+			var myFile = new DirectoryInfo(backupFolder).GetFiles()
+				.Where(f => f.Extension.Equals(".arz"))
+				.OrderByDescending(f => f.LastWriteTime)
+				.First();
+			if (myFile == null)
+			{
+				throw new InvalidOperationException("No backup.");
+			}
+			int count = 0;
+			
+			using (FileStream arzStream = new FileStream(this.fileName, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
+			using (FileStream backupStream = new FileStream(myFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read))
+			{
+				foreach (RecordInfo item in recordInfo.Values)
+				{
+					arzStream.Seek(item.offset, SeekOrigin.Begin);
+					backupStream.Seek(item.offset, SeekOrigin.Begin);
+					byte[] buffer = new byte[item.length];
+					byte[] buffer2 = new byte[item.length];
+					arzStream.Read(buffer, 0, buffer.Length);
+					backupStream.Read(buffer2, 0, buffer2.Length);
+					if (buffer[0] != 120 || buffer[0] != buffer2[0])
+					{
+						arzStream.Seek(item.offset, SeekOrigin.Begin);
+						arzStream.Write(buffer2, 0, buffer2.Length);
+
+						int index = this.recordInfoList.IndexOf(item);
+						if (index > 0)
+						{
+							RecordInfo prev = this.recordInfoList[index - 1];
+							prev.Restore(this, false);
+							this.cache.Remove(TQData.NormalizeRecordPath(prev.ID));
+						}
+						count++;
+					}
+				}
+			}
+			return count;
 		}
 
 		#endregion RecordInfo

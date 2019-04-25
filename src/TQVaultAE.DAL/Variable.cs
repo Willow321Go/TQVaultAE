@@ -61,12 +61,15 @@ namespace TQVaultData
 		/// <param name="variableName">string name of the variable.</param>
 		/// <param name="dataType">string type of data for variable.</param>
 		/// <param name="numberOfValues">int number for values that the variable contains.</param>
-		public Variable(string variableName, VariableDataType dataType, int numberOfValues)
+		public Variable(int variableID, string variableName, VariableDataType dataType, int numberOfValues)
 		{
+			this.variableID = variableID;
 			this.Name = variableName;
 			this.DataType = dataType;
 			this.values = new object[numberOfValues];
 		}
+
+		public int variableID { get; private set; }
 
 		/// <summary>
 		/// Gets the name of the variable.
@@ -84,6 +87,20 @@ namespace TQVaultData
 		/// Gets the Datatype of the variable.
 		/// </summary>
 		public VariableDataType DataType { get; private set; }
+
+		public string Values
+		{
+			get
+			{
+				return string.Join("\r\n", Array.ConvertAll(values, v => v.ToString()));
+			}
+			set
+			{
+				string[] list = value.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+				this.parseValues(list);
+
+			}
+		}
 
 		/// <summary>
 		/// Gets the number of values that the variable contains.
@@ -164,12 +181,16 @@ namespace TQVaultData
 			StringBuilder ans = new StringBuilder(64);
 			ans.Append(this.Name);
 			ans.Append(",");
+			ans.Append(this.variableID);
+			ans.Append(",");
+			ans.Append(this.DataType.ToString());
+			ans.Append(",");
 
 			for (int i = 0; i < this.NumberOfValues; ++i)
 			{
 				if (i > 0)
 				{
-					ans.Append(";");
+					ans.Append("&");
 				}
 
 				ans.AppendFormat(CultureInfo.InvariantCulture, formatSpec, this.values[i]);
@@ -205,6 +226,58 @@ namespace TQVaultData
 			}
 
 			return ans.ToString();
+		}
+
+		public static Variable parse(string line)
+		{
+			string[] l = line.Split(',');
+			string name = l[0];
+			int variableID = Int32.Parse(l[1]);
+			VariableDataType dataType = (VariableDataType)Enum.Parse(typeof(VariableDataType), l[2]);
+			string[] vl = l[3].Split('&');
+			Variable v = new Variable(variableID, name, dataType, vl.Length);
+			v.parseValues(vl);
+			return v;
+		}
+
+		private void parseValues(string[] vl)
+		{
+			int j = 0;
+			this.values = new object[vl.Length];
+			foreach (string str in vl)
+			{
+				switch (this.DataType)
+				{
+					case VariableDataType.Integer:
+					case VariableDataType.Boolean:
+						{
+							int val = Int32.Parse(str);
+							this.values[j] = val;
+							break;
+						}
+
+					case VariableDataType.Float:
+						{
+							float val = float.Parse(str);
+							this.values[j] = val;
+							break;
+						}
+
+					case VariableDataType.StringVar:
+						{
+							this.values[j] = str;
+							break;
+						}
+
+					default:
+						{
+							int val = Int32.Parse(str);
+							this.values[j] = val;
+							break;
+						}
+				}
+				j++;
+			}
 		}
 	}
 }
