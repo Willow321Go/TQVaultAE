@@ -1,3 +1,4 @@
+PLEASE IGNORE THIS FORK. INTENDED FOR LEARNING ONLY
 # TQVaultAE
 [![Steam](https://img.shields.io/badge/steam-link-lightgrey.svg)](https://steamcommunity.com/sharedfiles/filedetails/?id=1136716167)
 [![Release](https://img.shields.io/badge/stable-4.1.0-blue.svg)](https://github.com/EtienneLamoureux/TQVaultAE/releases)
